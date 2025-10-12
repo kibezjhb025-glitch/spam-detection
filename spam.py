@@ -16,8 +16,8 @@ url_shorteners = ["bit.ly", "tinyurl.com", "t.co", "goo.gl","ow.ly", "is.gd"]
 trusted_domains = ["gmail.com","yahoo.com","outlook.com","hotmail.com"]
 stopwords = set(["the", "and", "is", "in", "at","of","a","an","to","for","on","that","this","with"])
 
-learning_rate = 0.5
-threshold = 0.0
+learning_rate = 1.5
+threshold = -10.0
 
 
 def clean_text(txt):
@@ -86,7 +86,7 @@ class BrainCell:
     def __init__(self):
         self.syn = {("kw:"+ k): float(v) for k,v in Base_keyword_weights.items()}
         self.syn.update({k: float(v) for k,v in Base_weights.items()})
-        self.syn["bias"] = -1.0
+        self.syn["bias"] = 5.0
 
     def raw_score(self,f):
         s = self.syn["bias"]
@@ -135,7 +135,7 @@ ham_train = [
             ("lunch plan","where to eat?","friend@yahoo.com"),
             ("team call","join the meeting","teammate@gmail.com")
         ]
-for _ in range(10):
+for _ in range(50):
     for subj, body,sender in spam_train + ham_train:
         label = "spam" if (subj,body,sender) in spam_train else "notspam"
         feats =extract_features(subj,body,sender)
