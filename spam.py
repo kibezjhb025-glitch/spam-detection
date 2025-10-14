@@ -8,16 +8,15 @@ Base_keyword_weights = {
 Base_weights = {
     "suspicious_link":1 , "short_link": 2, "many_links":1, 
     "excess_caps":1, "many_exclaims": 1, "mixed_symbols":1,
-    "unknown_sender":1, "trusted_sender": -1, "empty_body": 1,
-    "attachment_unknown_sender": 1
+    "unknown_sender":1, "trusted_sender": -1, "empty_body": 1
 } 
 
 url_shorteners = ["bit.ly", "tinyurl.com", "t.co", "goo.gl","ow.ly", "is.gd"]
 trusted_domains = ["gmail.com","yahoo.com","outlook.com","hotmail.com"]
 stopwords = set(["the", "and", "is", "in", "at","of","a","an","to","for","on","that","this","with"])
 
-learning_rate = 2.0
-threshold = 4.5
+learning_rate = 3.0
+threshold = 2.5
 
 
 def clean_text(txt):
@@ -28,8 +27,7 @@ def clean_text(txt):
     for char in txt:
         if char.isalnum() or char.isspace() or char in "/:,-?&=#_%=~":
             out.append(char)
-        else:
-            out.append(char)
+
     return "".join(out).lower()
 
 def tokenize(txt):
@@ -62,7 +60,7 @@ def extract_features(subject,body,sender):
 
     f["short_link"] = 1 if any(s in mash for s in url_shorteners) else 0
     f["many_links"] = 1 if mash.count("http") >= 3 else 0
-    f["suspicious_link"] = 1 if any(char.isdigit() for char in mash) else 0
+    f["suspicious_link"] = 1 if any(s in mash.lower() for s in ["http://", "https://","www."]) and any(char.isdigit() for char in mash) else 0
 
     caps = sum(1 for c in mash if c.isupper())
     letters = sum(1 for c in mash if c.isalpha())
@@ -97,23 +95,12 @@ class BrainCell:
     def learn(self, f, label):
         t = 1 if label.lower() == "spam" else -1
         s = self.raw_score(f)
-        if t * s <= 0:
-            for k,x in f.items():
-                self.syn[k] = self.syn.get(k,0.0) + learning_rate * t * x
-            self.syn["bias"] += learning_rate *t 
+        if (t == 1 and s <= threshold) or (t == -1 and s > threshold):
 
-    # def train_once(self):
- 
-    #     for subj,body,sender in spam_train:
-    #         f = extract_features(subj,body,sender)
-    #         for k,x in f.items():
-    #             self.syn[k] = self.syn.get(k, 0.0) + learning_rate *x
-    #         self.syn["bias"] += learning_rate 
-    #     for subj, body, sender in ham_train:
-    #         f = extract_features(subj, body, sender)
-    #         for k, x in f.items():
-    #             self.syn[k] = self.syn.get(k, 0.0) - learning_rate * x
-    #         self.syn["bias"] -= learning_rate
+            for k, x in f.items():
+                self.syn[k] = self.syn.get(k, 0.0) + learning_rate * t * x
+            if label.lower() == "spam":
+               self.syn["bias"] += learning_rate * 0.5
 
 
     def classify(self,f):
@@ -121,20 +108,32 @@ class BrainCell:
         return "spam" if s>= threshold else "notspam"
     
 detector = BrainCell()
-# detector.train_once()
 
 spam_train = [
-            ("win cash now","click here","unknown@spam.biz"),
-            ("act now", "buy now limited time offer", "promo@deals.com"),
-            ("congratulations","you won a prize","lottery@scam.com"),
-            ("risk free","get loan today","money@loan.biz")
+    ("win cash now","click here","unknown@spam.biz"),  
+    ("act now", "buy now limited time offer", "promo@deals.com"),  
+    ("congratulations","you won a prize","lottery@scam.com"),  
+    ("risk free","get loan today","money@loan.biz"),  
+    ("urgent reply needed", "verify your account now", "security@fake.com"),  
+    ("you won", "claim your free gift card", "winner@scam.net"),  
+    ("limited time", "act fast before offer expires", "deals@spam.org"),  
+    ("free money", "no credit check required", "loan@spam.biz"),  
+    ("click here now", "100% guaranteed winner", "prize@fake.com"),  
+    ("congratulations winner", "cash prize waiting", "notify@scam.com")
         ]
 ham_train = [
-            ("meeting schedule", "please find attached", "boss@gmail.com"),
-            ("project update", "our report is ready", "colleague@outlook.com"),
-            ("lunch plan","where to eat?","friend@yahoo.com"),
-            ("team call","join the meeting","teammate@gmail.com")
+    ("meeting schedule", "please find attached", "boss@gmail.com"),  
+    ("project update", "our report is ready", "colleague@outlook.com"),  
+    ("lunch plan","where to eat?","friend@yahoo.com"),  
+    ("team call","join the meeting","teammate@gmail.com"),  
+    ("quarterly review", "let's discuss your progress", "manager@yahoo.com"),  
+    ("weekend plans", "are you free on saturday", "buddy@hotmail.com"),  
+    ("document review", "please check the attached file", "coworker@outlook.com"),  
+    ("birthday party", "you're invited to celebrate", "friend@gmail.com"),  
+    ("conference call", "dial in at 2pm today", "admin@yahoo.com"),  
+    ("status update", "here is the latest information", "team@gmail.com") 
         ]
+
 for _ in range(100):
     for subj, body, sender in spam_train:
         detector.learn(extract_features(subj, body, sender), "spam")
@@ -145,67 +144,46 @@ dataset = [(s, b, e, "spam") for s, b, e in spam_train] + \
            [(s, b, e, "notspam") for s, b, e in ham_train]
 
 
-#     for subj, body,sender in spam_train + ham_train:
-#         label = "spam" if (subj,body,sender) in spam_train else "notspam"
-#         feats =extract_features(subj,body,sender)
-#         detector.learn(feats, label)
+def evaluate_detailed_accuracy(dataset):
+    correct_spam = 0
+    total_spam = 0
+    correct_ham = 0
+    total_ham = 0
 
-# dataset = [(s,b,e,"spam") for s,b,e in spam_train] + [(s,b,e,"notspam") for s,b,e in ham_train]
-
-def evaluate_accuracy(dataset, threshold_value=None):
-    # correct_spam = 0
-    # total_spam = sum(1 for _, _, _, l in dataset if l == "spam")
-    # correct_ham = 0
-    # total_ham = sum(1 for _, _, _, l in dataset if l == "notspam")
-
-    # for subj, body, sender, label in dataset:
-    #     pred = detector.classify(extract_features(subj, body, sender))
-    #     if label == "spam" and pred == "spam":
-    #         correct_spam += 1
-    #     if label == "notspam" and pred == "notspam":
-    #         correct_ham += 1
-
-    # spam_acc = correct_spam / total_spam * 100
-    # ham_acc = correct_ham / total_ham * 100
-    # print(f"Spam accuracy: {spam_acc:.1f}%")
-    # print(f"Ham accuracy: {ham_acc:.1f}%")
-
-    global threshold
-    if threshold_value is not None:
-        threshold = threshold_value
-
-    correct = 0
-    total = len(dataset)
     for subj, body, sender, label in dataset:
         feats = extract_features(subj,body, sender)
         pred = detector.classify(feats)
-        if (pred =="spam" and label== "spam") or (pred== "notspam" and label == "notspam"):
-            correct +=1
-    return correct/ total * 100
-# detector.learn(extract_features("win cash now","click here", "unknown@spam.biz"), "spam")
-# detector.learn(extract_features("act now","buy now limited time offer", "promo@deals.com"), "spam")
-# detector.learn(extract_features("meeting schedule","please find attached", "boss@gmail.com"), "notspam")
-# detector.learn(extract_features("project update", "our report is ready", "colleague@outlook.com"), "notspam")
+
+        if label == "spam":
+            total_spam += 1
+            if pred == "spam":
+                correct_spam += 1
+        
+        else:
+            total_ham += 1
+            if pred == "notspam":
+                correct_ham += 1
+
+    spam_acc = (correct_spam / total_spam * 100) if total_spam > 0 else 0
+    ham_acc = (correct_ham / total_ham * 100) if total_ham > 0 else 0
+
+    print(f"Your spam detector correctly identified {spam_acc}% of spam emails as spam.")  
+    print(f"Your spam detector correctly identified {ham_acc}% of ham emails as not spam")
+
+    return spam_acc, ham_acc
 
 def is_spam(subject, body, sender="", learn_label = None):
-   return detector.classify(extract_features(subject,body,sender))
-   
-    # feats = extract_features(subject, body, sender)
-    # if learn_label:
-    #     detector.learn(feats, learn_label)
-    # return detector.classify(feats)
-
-# f_spam = extract_features("win cash now", "click here", "unknown@spam.biz")
-# f_ham = extract_features("project update", "our report is ready", "colleague@outlook.com")
-# print("spam score:", detector.raw_score(f_spam))
-# print("ham score:", detector.raw_score(f_ham))
+    feats = extract_features(subject, body, sender)
+    if learn_label:
+        detector.learn(feats, learn_label)
+    return detector.classify(feats)
 
 if __name__ == "__main__":
-    evaluate_accuracy(dataset)
     try: 
         subject = input().strip()
         body = input().strip()
         sender = input().strip()
-        print(detector.classify(extract_features(subject, body, sender)))
+        result = detector.classify(extract_features(subject, body, sender))
+        print(result) 
     except EOFError:
         print("notspam")
